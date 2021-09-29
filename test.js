@@ -1,7 +1,7 @@
 import { test } from "uvu";
 import * as assert from "uvu/assert";
 import toolkit from "@reduxjs/toolkit";
-import { createDomain, restore } from "effector";
+import { allSettled, createDomain, fork, restore } from "effector";
 
 import { reduxF } from "./lib.js";
 
@@ -69,6 +69,34 @@ test("should trigger redux update on any effector store update", () => {
   });
 
   doSomething(1);
+  assert.is(updated, 1);
+});
+
+test("should react only on particular scope", async () => {
+  const root = createDomain();
+
+  const doSomething = root.createEvent();
+  const $anyting = restore(doSomething, 0);
+
+  const scope1 = fork();
+  const scope2 = fork();
+
+  const { enhancer } = reduxF({ domain: root, scope: scope1 });
+
+  const store = configureStore({
+    reducer: { counter: counterSlice.reducer },
+    enhancers: [enhancer],
+  });
+
+  let updated = 0;
+  store.subscribe(() => {
+    updated += 1;
+  });
+
+  await allSettled(doSomething, { params: 1, scope: scope1 });
+  assert.is(updated, 1);
+
+  await allSettled(doSomething, { params: 2, scope: scope2 });
   assert.is(updated, 1);
 });
 

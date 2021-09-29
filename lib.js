@@ -1,7 +1,52 @@
-import { scopeBind, createStore, createEvent, combine } from "effector";
+import {
+  clearNode,
+  step,
+  createNode,
+  scopeBind,
+  createStore,
+  createEvent,
+  combine,
+} from "effector";
 
 const fAction = Symbol("f");
 const fField = Symbol("f");
+
+function createBoundEvent(event, scope) {
+  if (!scope) {
+    return event;
+  }
+
+  return scopeBind(event, {
+    scope,
+  });
+}
+
+// Copy-paste from effector-react =(
+export function createBoundWatch(store, fn, scope) {
+  const seq = [step.run({ fn: (value) => fn(value) })];
+  if (scope) {
+    const node = createNode({ node: seq });
+    const id = store.graphite.id;
+    const scopeLinks = scope.additionalLinks;
+    const links = scopeLinks[id] || [];
+    scopeLinks[id] = links;
+    links.push(node);
+    return () => {
+      const idx = links.indexOf(node);
+      if (idx !== -1) links.splice(idx, 1);
+      clearNode(node);
+    };
+  } else {
+    const node = createNode({
+      node: seq,
+      parent: [store],
+      family: { owners: store },
+    });
+    return () => {
+      clearNode(node);
+    };
+  }
+}
 
 const reduxF = (config) => {
   const $effectorStore = createStore(null);
@@ -15,13 +60,10 @@ const reduxF = (config) => {
     effectorMegaStore = combine(...effectorStores);
   }
 
-  let updateEffectorStoreBound;
-  if (config.scope) {
-    updateEffectorStoreBound = scopeBind(updateEffectorStore, {
-      scope: config.scope,
-    });
-  }
-  updateEffectorStoreBound = updateEffectorStore;
+  const updateEffectorStoreBound = createBoundEvent(
+    updateEffectorStore,
+    config.scope
+  );
 
   function enhancer(creator) {
     return function (reducer) {
@@ -34,24 +76,28 @@ const reduxF = (config) => {
         return reducer(state, action);
       }
 
-      const store = creator(newReducer);
+      const reduxStore = creator(newReducer);
 
       // Sync from redux to effector
       // on every dispatch
-      store.subscribe(() => {
-        updateEffectorStoreBound(store.getState());
+      reduxStore.subscribe(() => {
+        updateEffectorStoreBound(reduxStore.getState());
       });
       // and for igaanitial state
-      updateEffectorStoreBound(store.getState());
+      updateEffectorStoreBound(reduxStore.getState());
 
       // Sync from effector to redux
       if (effectorMegaStore) {
-        effectorMegaStore.updates.watch(() => {
-          store.dispatch({ type: fAction, payload: null });
-        });
+        createBoundWatch(
+          effectorMegaStore,
+          () => {
+            reduxStore.dispatch({ type: fAction, payload: null });
+          },
+          config.scope
+        );
       }
 
-      return store;
+      return reduxStore;
     };
   }
 
