@@ -7,6 +7,10 @@ import { reduxF } from "./lib.js";
 
 const { configureStore, createSlice } = toolkit;
 
+function selectCounter(state) {
+  return state?.counter?.value ?? null;
+}
+
 export const counterSlice = createSlice({
   name: "counter",
   initialState: {
@@ -25,32 +29,25 @@ export const counterSlice = createSlice({
   },
 });
 
-export default configureStore({
-  reducer: {},
-});
-
-function assertSameValue($store, store) {
-  assert.is($store.getState(), store.getState());
-}
-
 test("should update effector store for redux store", () => {
   const root = createDomain();
-  const { $store, enhancer } = reduxF({ domain: root });
+  const { select, enhancer } = reduxF({ domain: root });
+  const $counter = select(selectCounter);
 
   const store = configureStore({
     reducer: { counter: counterSlice.reducer },
     enhancers: [enhancer],
   });
-  assertSameValue($store, store);
+  assert.is($counter.getState(), selectCounter(store.getState()));
 
   store.dispatch(counterSlice.actions.increment());
-  assertSameValue($store, store);
+  assert.is($counter.getState(), selectCounter(store.getState()));
 
   store.dispatch(counterSlice.actions.decrement());
-  assertSameValue($store, store);
+  assert.is($counter.getState(), selectCounter(store.getState()));
 
-  store.dispatch(counterSlice.actions.incrementByAmount());
-  assertSameValue($store, store);
+  store.dispatch(counterSlice.actions.incrementByAmount(5));
+  assert.is($counter.getState(), selectCounter(store.getState()));
 });
 
 test("should trigger redux update on any effector store update", () => {

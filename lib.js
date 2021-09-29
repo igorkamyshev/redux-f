@@ -23,37 +23,42 @@ const reduxF = (config) => {
   }
   updateEffectorStoreBound = updateEffectorStore;
 
-  const enhancer = (creator) => (reducer) => {
-    const newReducer = (state, action) => {
-      // Just copy store to trigger re-renders
-      if (action.type === fAction) {
-        return { ...state, [fField]: (state[fField] ?? 0) + 1 };
+  function enhancer(creator) {
+    return function (reducer) {
+      function newReducer(state, action) {
+        // Just copy store to trigger re-renders
+        if (action.type === fAction) {
+          return { ...state, [fField]: (state[fField] ?? 0) + 1 };
+        }
+
+        return reducer(state, action);
       }
 
-      return reducer(state, action);
-    };
+      const store = creator(newReducer);
 
-    const store = creator(newReducer);
-
-    // Sync from redux to effector
-    // on every dispatch
-    store.subscribe(() => {
-      updateEffectorStoreBound(store.getState());
-    });
-    // and for igaanitial state
-    updateEffectorStoreBound(store.getState());
-
-    // Sync from effector to redux
-    if (effectorMegaStore) {
-      effectorMegaStore.updates.watch(() => {
-        store.dispatch({ type: fAction, payload: null });
+      // Sync from redux to effector
+      // on every dispatch
+      store.subscribe(() => {
+        updateEffectorStoreBound(store.getState());
       });
-    }
+      // and for igaanitial state
+      updateEffectorStoreBound(store.getState());
 
-    return store;
+      // Sync from effector to redux
+      if (effectorMegaStore) {
+        effectorMegaStore.updates.watch(() => {
+          store.dispatch({ type: fAction, payload: null });
+        });
+      }
+
+      return store;
+    };
+  }
+
+  return {
+    enhancer,
+    select: (selector) => $effectorStore.map(selector),
   };
-
-  return { enhancer, $store: $effectorStore };
 };
 
 export { reduxF };
